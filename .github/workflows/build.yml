@@ -62,15 +62,14 @@ jobs:
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_C_FLAGS="-fPIC" \
+          -DCMAKE_C_FLAGS="-fPIC -DPNG_SUPPORTED=1 -DHAVE_LIBPNG=1" \
+          -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
 
     - name: Build MozJPEG
       run: |
         cd mozjpeg-4.1.1/build
         make -j$(nproc) VERBOSE=1
-
-        # List built files for verification
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
@@ -94,12 +93,8 @@ jobs:
         mkdir -p mozjpeg-static/bin
         cp build/cjpeg-static mozjpeg-static/bin/cjpeg
         cp build/djpeg-static mozjpeg-static/bin/djpeg
-
-        # Verify the binaries
-        file mozjpeg-static/bin/cjpeg
-        file mozjpeg-static/bin/djpeg
-
-        tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
+        # Create the tarball in the repository root
+        tar -czvf ../mozjpeg-static-rhel.tar.gz mozjpeg-static/
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
