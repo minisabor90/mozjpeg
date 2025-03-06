@@ -63,12 +63,24 @@ jobs:
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           -DCMAKE_C_FLAGS="-fPIC" \
+          -DCMAKE_CXX_FLAGS="-fPIC" \
           ..
 
-    - name: Build MozJPEG
+    - name: Patch static target linker flags
       run: |
         cd mozjpeg-4.1.1/build
-        make -j$(nproc) VERBOSE=1
+        cat << 'EOF' > patch.cmake
+        # Only patch the static executable targets
+        set_target_properties(cjpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
+        set_target_properties(djpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
+EOF
+        cmake -P patch.cmake
+
+    - name: Build MozJPEG static targets only
+      run: |
+        cd mozjpeg-4.1.1/build
+        # Build only the static executables
+        make -j$(nproc) cjpeg-static djpeg-static VERBOSE=1
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
