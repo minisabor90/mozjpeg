@@ -22,9 +22,9 @@ jobs:
       
     - name: Configure and build
       run: |
-        mkdir build
+        mkdir -p build
         cd build
-        cmake -G"Unix Makefiles" ..
+        cmake -G"Unix Makefiles" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
         make -j$(nproc)
       
     - name: Create package
