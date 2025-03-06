@@ -43,7 +43,7 @@ jobs:
         make install
         cd ..
       
-    - name: Configure MozJPEG
+    - name: Configure MozJPEG (Static Only)
       run: |
         mkdir -p build
         cd build
@@ -52,7 +52,7 @@ jobs:
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
         
-        # Configure with static options and explicitly specify PNG paths
+        # Configure with ONLY static options and explicitly disable shared libraries
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
@@ -64,70 +64,37 @@ jobs:
           -DZLIB_INCLUDE_DIR=/tmp/local/include \
           -DZLIB_LIBRARY=/tmp/local/lib/libz.a \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
+          -DCMAKE_C_FLAGS="-fPIC" \
           ..
       
     - name: Build MozJPEG
       run: |
         cd build
-        make -j$(nproc)
+        make -j$(nproc) VERBOSE=1
+        
+        # Show what was built
+        echo "=== Built files ==="
+        find . -name "*.a" | sort
+        find . -type f -executable | sort
       
     - name: Build static binaries
       run: |
         cd build
         
-        # Show what we have
-        echo "=== Directory structure ==="
-        find . -type d | sort
+        # Check if we have the static libraries
+        if [ ! -f "libjpeg.a" ]; then
+          echo "ERROR: libjpeg.a not found!"
+          exit 1
+        fi
         
-        echo "=== All object files ==="
-        find . -name "*.o" | sort
-        
-        echo "=== All libraries ==="
-        find . -name "*.a" -o -name "*.so*" | sort
-        
-        # Create static binaries using direct approach
+        # Create static binaries using the static libraries
         echo "Building static cjpeg..."
         gcc -static -o cjpeg.static ../cjpeg/cjpeg.c ../cjpeg/rdppm.c ../cjpeg/rdgif.c ../cjpeg/rdtarga.c ../cjpeg/rdrle.c ../cjpeg/rdbmp.c ../cjpeg/rdswitch.c ../cjpeg/cdjpeg.c \
-          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../cjpeg -lm || \
-          echo "Failed with first method, trying alternative..."
-        
-        # If first method fails, try alternative
-        if [ ! -f "cjpeg.static" ]; then
-          echo "Trying alternative method for cjpeg..."
-          mkdir -p objs
-          cd objs
-          ar x ../libjpeg.a
-          cd ..
-          gcc -static -o cjpeg.static ../cjpeg/cjpeg.c objs/*.o /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../cjpeg -lm
-        fi
+          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../cjpeg -lm
         
         echo "Building static djpeg..."
         gcc -static -o djpeg.static ../djpeg/djpeg.c ../djpeg/wrppm.c ../djpeg/wrgif.c ../djpeg/wrtarga.c ../djpeg/wrrle.c ../djpeg/wrbmp.c ../djpeg/rdcolmap.c ../djpeg/cdjpeg.c \
-          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../djpeg -lm || \
-          echo "Failed with first method, trying alternative..."
-        
-        # If first method fails, try alternative
-        if [ ! -f "djpeg.static" ]; then
-          echo "Trying alternative method for djpeg..."
-          if [ ! -d "objs" ]; then
-            mkdir -p objs
-            cd objs
-            ar x ../libjpeg.a
-            cd ..
-          fi
-          gcc -static -o djpeg.static ../djpeg/djpeg.c objs/*.o /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../djpeg -lm
-        fi
-        
-        # If all else fails, try using the existing binaries and statically linking them
-        if [ ! -f "cjpeg.static" ] && [ -f "cjpeg" ]; then
-          echo "Using existing cjpeg binary as template..."
-          cp cjpeg cjpeg.static
-        fi
-        
-        if [ ! -f "djpeg.static" ] && [ -f "djpeg" ]; then
-          echo "Using existing djpeg binary as template..."
-          cp djpeg djpeg.static
-        fi
+          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../djpeg -lm
       
     - name: Verify static linking
       run: |
@@ -140,12 +107,7 @@ jobs:
           ldd cjpeg.static || echo "Good! Binary is statically linked."
         else
           echo "ERROR: cjpeg.static was not built successfully!"
-          # Don't fail yet, check if regular cjpeg is static
-          if [ -f "cjpeg" ]; then
-            echo "Checking if regular cjpeg is statically linked:"
-            file cjpeg
-            ldd cjpeg || echo "Good! Regular cjpeg is statically linked."
-          fi
+          exit 1
         fi
         
         if [ -f "djpeg.static" ]; then
@@ -154,50 +116,16 @@ jobs:
           ldd djpeg.static || echo "Good! Binary is statically linked."
         else
           echo "ERROR: djpeg.static was not built successfully!"
-          # Don't fail yet, check if regular djpeg is static
-          if [ -f "djpeg" ]; then
-            echo "Checking if regular djpeg is statically linked:"
-            file djpeg
-            ldd djpeg || echo "Good! Regular djpeg is statically linked."
-          fi
+          exit 1
         fi
       
     - name: Create package
       run: |
         mkdir -p mozjpeg-static/bin
         
-        # Find and copy the static binaries
-        if [ -f "build/cjpeg.static" ]; then
-          cp build/cjpeg.static mozjpeg-static/bin/cjpeg
-        elif [ -f "build/cjpeg" ]; then
-          # Check if regular cjpeg is static
-          if ! ldd build/cjpeg &> /dev/null; then
-            echo "Regular cjpeg is static, using it"
-            cp build/cjpeg mozjpeg-static/bin/cjpeg
-          else
-            echo "ERROR: No static cjpeg binary found!"
-            exit 1
-          fi
-        else
-          echo "ERROR: Could not find cjpeg binary!"
-          exit 1
-        fi
-        
-        if [ -f "build/djpeg.static" ]; then
-          cp build/djpeg.static mozjpeg-static/bin/djpeg
-        elif [ -f "build/djpeg" ]; then
-          # Check if regular djpeg is static
-          if ! ldd build/djpeg &> /dev/null; then
-            echo "Regular djpeg is static, using it"
-            cp build/djpeg mozjpeg-static/bin/djpeg
-          else
-            echo "ERROR: No static djpeg binary found!"
-            exit 1
-          fi
-        else
-          echo "ERROR: Could not find djpeg binary!"
-          exit 1
-        fi
+        # Copy the static binaries
+        cp build/cjpeg.static mozjpeg-static/bin/cjpeg
+        cp build/djpeg.static mozjpeg-static/bin/djpeg
         
         # Check the binaries
         file mozjpeg-static/bin/cjpeg
