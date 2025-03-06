@@ -18,25 +18,25 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget
+        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget unzip
       
-    - name: Download and build static zlib
+    - name: Download and build static zlib (latest version)
       run: |
-        # Download using GitHub mirror to avoid potential download issues
-        wget https://github.com/madler/zlib/releases/download/v1.3/zlib-1.3.tar.gz
-        tar xzf zlib-1.3.tar.gz
-        cd zlib-1.3
+        # Download latest zlib 1.3.1
+        wget https://github.com/madler/zlib/archive/refs/tags/v1.3.1.zip -O zlib.zip
+        unzip zlib.zip
+        cd zlib-1.3.1
         ./configure --prefix=/tmp/local --static
         make -j$(nproc)
         make install
         cd ..
       
-    - name: Download and build static libpng
+    - name: Download and build static libpng (latest version)
       run: |
-        # Download from GitHub mirror to avoid SourceForge issues
-        wget https://github.com/glennrp/libpng/archive/refs/tags/v1.6.40.tar.gz -O libpng.tar.gz
-        tar xzf libpng.tar.gz
-        cd libpng-1.6.40
+        # Download latest libpng 1.6.47
+        wget https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip -O libpng.zip
+        unzip libpng.zip
+        cd libpng-1.6.47
         autoreconf -fiv
         CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure --prefix=/tmp/local --disable-shared --enable-static
         make -j$(nproc)
@@ -48,33 +48,50 @@ jobs:
         mkdir -p build
         cd build
         
-        # Configure with static options and point to our local static libraries
-        PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig \
-        CPPFLAGS="-I/tmp/local/include" \
-        LDFLAGS="-L/tmp/local/lib" \
+        # Configure with static options and explicitly specify PNG paths
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
           -DENABLE_STATIC=ON \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
+          -DPNG_INCLUDE_DIR=/tmp/local/include \
+          -DPNG_LIBRARY=/tmp/local/lib/libpng.a \
+          -DZLIB_INCLUDE_DIR=/tmp/local/include \
+          -DZLIB_LIBRARY=/tmp/local/lib/libz.a \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           ..
       
     - name: Build MozJPEG
       run: |
         cd build
-        make -j$(nproc)
+        make -j$(nproc) VERBOSE=1
       
-    - name: Build static binaries
+    - name: Build static binaries with explicit static flag
       run: |
         cd build
         
+        # List all static libraries to ensure we have them
+        echo "Available static libraries:"
+        find /tmp/local/lib -name "*.a"
+        
+        # List object files in cjpeg and djpeg directories
+        echo "Object files in cjpeg:"
+        find cjpeg -name "*.o" | sort
+        
+        echo "Object files in djpeg:"
+        find djpeg -name "*.o" | sort
+        
+        echo "Static libraries in build dir:"
+        find . -name "*.a" | sort
+        
         # Compile cjpeg statically
+        echo "Building static cjpeg..."
         cd cjpeg
         gcc -static -o cjpeg *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
         
         # Compile djpeg statically
+        echo "Building static djpeg..."
         cd ../djpeg
         gcc -static -o djpeg *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
         
