@@ -67,10 +67,11 @@ jobs:
           -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
           ..
 
-    - name: Build MozJPEG
+    - name: Build MozJPEG static targets only
       run: |
         cd mozjpeg-4.1.1/build
-        make -j$(nproc) VERBOSE=1
+        # Build only the static executables to avoid shared targets that introduce rpath issues.
+        make -j$(nproc) cjpeg-static djpeg-static VERBOSE=1
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
