@@ -1,12 +1,10 @@
-name: Build mozjpeg for Linux x64
+name: Build and Package mozjpeg for Linux x64
 
 on:
   push:
-    branches:
-      - main
+    branches: [ master ]
   pull_request:
-    branches:
-      - main
+    branches: [ master ]
 
 jobs:
   build:
@@ -21,14 +19,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential autoconf automake libtool nasm pkg-config
 
-      - name: Prepare build system
+      - name: Generate configure script
         run: |
-          autoreconf -fiv
+          sh autogen.sh
 
-      - name: Configure mozjpeg
+      - name: Configure build
         run: |
-          ./configure
+          ./configure --prefix=$GITHUB_WORKSPACE/install
 
-      - name: Build mozjpeg
+      - name: Build and install mozjpeg
         run: |
           make -j$(nproc)
+          make install
+
+      - name: Verify build
+        run: |
+          install/bin/cjpeg -version
+
+      - name: Upload compiled binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: mozjpeg-binaries
+          path: install/bin
