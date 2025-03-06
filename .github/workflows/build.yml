@@ -48,7 +48,7 @@ jobs:
         wget https://github.com/mozilla/mozjpeg/archive/refs/tags/v4.1.1.tar.gz -O mozjpeg.tar.gz
         tar -xzf mozjpeg.tar.gz
 
-    - name: Configure MozJPEG (Static with PNG enabled)
+    - name: Configure MozJPEG (Static with PNG enabled and fully static linking)
       run: |
         cd mozjpeg-4.1.1
         mkdir -p build
@@ -63,6 +63,8 @@ jobs:
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           -DCMAKE_C_FLAGS="-fPIC" \
+          -DCMAKE_CXX_FLAGS="-fPIC" \
+          -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
           ..
 
     - name: Build MozJPEG
