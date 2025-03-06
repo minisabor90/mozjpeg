@@ -19,32 +19,38 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config
-        # Install development packages
         sudo apt-get install -y zlib1g-dev libpng-dev
       
     - name: Configure and build MozJPEG statically
       run: |
-        # Set environment variables for static linking
-        export CFLAGS="-fPIC -O3"
-        export CXXFLAGS="-fPIC -O3"
-        export LDFLAGS="-static"
-        
-        # Configure with static options
+        # Configure with static options - IMPORTANT: ENABLE_SHARED must be OFF
         mkdir -p build
         cd build
+        
+        # Note: We're NOT setting LDFLAGS="-static" globally as it causes issues with shared libs
         cmake -G"Unix Makefiles" \
-          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
           -DENABLE_STATIC=ON \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
         
         # Build
         make -j$(nproc)
+      
+    - name: Build static binaries with explicit static linking
+      run: |
+        cd build
+        # Now build the executables with static linking
+        cd cjpeg
+        gcc -static -o cjpeg *.o ../*.a /usr/lib/x86_64-linux-gnu/libpng.a /usr/lib/x86_64-linux-gnu/libz.a -lm
+        cd ../djpeg
+        gcc -static -o djpeg *.o ../*.a /usr/lib/x86_64-linux-gnu/libpng.a /usr/lib/x86_64-linux-gnu/libz.a -lm
+        # Copy the static binaries back to the main build directory
+        cp cjpeg/cjpeg ../cjpeg
+        cp djpeg/djpeg ../djpeg
       
     - name: Verify static linking
       run: |
@@ -59,19 +65,13 @@ jobs:
       
     - name: Create package
       run: |
-        cd build
-        make install DESTDIR=../mozjpeg-install
+        # Create directory structure for the package
+        mkdir -p mozjpeg-static/bin
         
-        # Create a simpler directory structure for the final package
-        mkdir -p ../mozjpeg-static/bin
-        cp ../mozjpeg-install/opt/mozjpeg/bin/* ../mozjpeg-static/bin/
+        # Copy the static binaries
+        cp build/cjpeg build/djpeg mozjpeg-static/bin/
         
-        # Copy documentation
-        mkdir -p ../mozjpeg-static/doc
-        cp ../mozjpeg-install/opt/mozjpeg/doc/* ../mozjpeg-static/doc/ || true
-        
-        # Create the final tarball
-        cd ..
+        # Create the tarball
         tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
       
     - name: Upload build artifact
