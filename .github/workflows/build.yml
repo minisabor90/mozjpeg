@@ -52,11 +52,10 @@ jobs:
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
         
-        # Configure with ONLY static options and explicitly disable shared libraries
+        # Configure for static build: disable shared libraries
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON \
+          -DBUILD_SHARED_LIBS=OFF \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DPNG_INCLUDE_DIR=/tmp/local/include \
@@ -81,7 +80,12 @@ jobs:
       run: |
         cd build
         
-        # Check if we have the static libraries
+        # Ensure libjpeg.a is built; if not, try building it explicitly
+        if [ ! -f "libjpeg.a" ]; then
+          echo "libjpeg.a not found in build directory, attempting to build static target..."
+          make libjpeg.a
+        fi
+        
         if [ ! -f "libjpeg.a" ]; then
           echo "ERROR: libjpeg.a not found!"
           exit 1
