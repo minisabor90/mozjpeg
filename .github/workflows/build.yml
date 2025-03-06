@@ -43,7 +43,7 @@ jobs:
         make install
         cd ..
       
-    - name: Configure MozJPEG (Static Only)
+    - name: Configure MozJPEG (Static with PNG enabled)
       run: |
         mkdir -p build
         cd build
@@ -52,14 +52,14 @@ jobs:
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
         
-        # Configure for static build: force static libraries
+        # Configure for a static build with PNG support enabled
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DPNG_INCLUDE_DIR=/tmp/local/include \
-          -DPNG_LIBRARY=/tmp/local/lib/libpng.a \
+          -DPNG_LIBRARY=/tmp/local/lib/libpng16.a \
           -DZLIB_INCLUDE_DIR=/tmp/local/include \
           -DZLIB_LIBRARY=/tmp/local/lib/libz.a \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
@@ -79,7 +79,6 @@ jobs:
     - name: Prepare static binaries
       run: |
         cd build
-        # The CMake build now produces static executables (cjpeg-static, djpeg-static, etc.)
         if [ ! -f "cjpeg-static" ]; then
           echo "ERROR: cjpeg-static not found!"
           exit 1
