@@ -1,0 +1,69 @@
+name: Build mozjpeg for RHEL 8-9
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # Host OS can be Ubuntu, we'll use a RHEL container
+    
+    container:
+      image: registry.access.redhat.com/ubi8/ubi:8.9  # RHEL 8.9 Universal Base Image
+      options: --user root  # Run as root to install packages
+
+    steps:
+    # Checkout the repository
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Install build dependencies
+    - name: Install build dependencies
+      run: |
+        dnf install -y \
+          gcc \
+          make \
+          cmake \
+          nasm \
+          libpng-devel \
+          zlib-devel \
+          diffutils  # needed for tests
+
+    # Create build directory
+    - name: Create build directory
+      run: mkdir build
+
+    # Configure with CMake
+    - name: Configure CMake
+      working-directory: ./build
+      run: cmake .. -DCMAKE_BUILD_TYPE=Release
+
+    # Build the project
+    - name: Build mozjpeg
+      working-directory: ./build
+      run: make -j$(nproc)
+
+    # Optional: Run tests
+    - name: Run tests
+      working-directory: ./build
+      run: ctest --output-on-failure
+
+    # Create artifacts directory
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        cp build/cjpeg artifacts/
+        cp build/djpeg artifacts/
+        cp build/jpegtran artifacts/
+        cp build/rdjpgcom artifacts/
+        cp build/wrjpgcom artifacts/
+
+    # Upload artifacts
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mozjpeg-rhel8-x64
+        path: artifacts/
