@@ -62,7 +62,7 @@ jobs:
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_C_FLAGS="-fPIC -DPNG_SUPPORTED=1 -DHAVE_LIBPNG=1" \
+          -DCMAKE_C_FLAGS="-fPIC" \
           -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
 
