@@ -24,6 +24,9 @@ jobs:
         # Install build dependencies
         dnf install -y epel-release
         dnf install -y gcc gcc-c++ make cmake nasm autoconf automake libtool pkgconfig wget unzip tar gzip
+        
+        # Install static libraries needed for fully static linking
+        dnf install -y glibc-static libstdc++-static zlib-static
 
     - name: Download and build static zlib
       run: |
@@ -70,7 +73,7 @@ jobs:
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_C_FLAGS="-fPIC -static" \
+          -DCMAKE_C_FLAGS="-fPIC" \
           -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
 
