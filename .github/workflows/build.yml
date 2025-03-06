@@ -1,4 +1,4 @@
-name: Build MozJPEG for Linux x64
+name: Build MozJPEG for Linux x64 (Static)
 
 on:
   push:
@@ -24,18 +24,42 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake -G"Unix Makefiles" -DCMAKE_C_FLAGS="-fPIC -O3" -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release ..
+        cmake -G"Unix Makefiles" \
+          -DCMAKE_C_FLAGS="-fPIC -O3" \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_SHARED=OFF \
+          -DENABLE_STATIC=ON \
+          -DWITH_JPEG8=ON \
+          -DPNG_SUPPORTED=ON \
+          ..
         make -j$(nproc)
       
     - name: Create package
       run: |
         cd build
         make install DESTDIR=../mozjpeg-install
-        cd ..
-        tar -czvf mozjpeg-linux-x64.tar.gz mozjpeg-install/
+        
+        # Copy necessary libraries to lib directory
+        mkdir -p ../mozjpeg-install/opt/mozjpeg/lib
+        cp /usr/lib/x86_64-linux-gnu/libpng.a ../mozjpeg-install/opt/mozjpeg/lib/
+        cp /usr/lib/x86_64-linux-gnu/libz.a ../mozjpeg-install/opt/mozjpeg/lib/
+        
+        # Create a standalone package with static binaries
+        cd ../mozjpeg-install/opt/mozjpeg/bin
+        for binary in cjpeg djpeg jpegtran rdjpgcom wrjpgcom tjbench; do
+          if [ -f "$binary" ]; then
+            # Create a statically linked version
+            gcc -static -o "${binary}_static" "$binary" ../../lib/libjpeg.a ../../lib/libturbojpeg.a ../../lib/libpng.a ../../lib/libz.a
+            mv "${binary}_static" "$binary"
+          fi
+        done
+        
+        cd ../../../..
+        tar -czvf mozjpeg-linux-x64-static.tar.gz mozjpeg-install/
       
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: mozjpeg-linux-x64
-        path: mozjpeg-linux-x64.tar.gz
+        name: mozjpeg-linux-x64-static
+        path: mozjpeg-linux-x64-static.tar.gz
