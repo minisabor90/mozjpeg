@@ -9,20 +9,30 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Host OS can be Ubuntu, we'll use a RHEL container
+    runs-on: ubuntu-latest
     
     container:
-      image: registry.access.redhat.com/ubi8/ubi:8.9  # RHEL 8.9 Universal Base Image
-      options: --user root  # Run as root to install packages
+      image: registry.access.redhat.com/ubi8/ubi:8.9
+      options: --user root
 
     steps:
     # Checkout the repository
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Install build dependencies
+    # Configure repositories and install dependencies
     - name: Install build dependencies
       run: |
+        # Update package manager
+        dnf update -y
+        
+        # Install EPEL repository for additional packages
+        dnf install -y epel-release
+        
+        # Enable CodeReady Builder repository
+        dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms
+        
+        # Install dependencies
         dnf install -y \
           gcc \
           make \
@@ -30,7 +40,7 @@ jobs:
           nasm \
           libpng-devel \
           zlib-devel \
-          diffutils  # needed for tests
+          diffutils
 
     # Create build directory
     - name: Create build directory
