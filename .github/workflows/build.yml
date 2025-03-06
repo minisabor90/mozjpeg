@@ -10,18 +10,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         repository: mozilla/mozjpeg
-      
+
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget unzip
-      
+
     - name: Download and build static zlib
       run: |
         wget https://github.com/madler/zlib/archive/refs/tags/v1.3.1.zip -O zlib.zip
@@ -31,7 +31,7 @@ jobs:
         make -j$(nproc)
         make install
         cd ..
-      
+
     - name: Download and build static libpng
       run: |
         wget https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip -O libpng.zip
@@ -41,41 +41,38 @@ jobs:
         CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure --prefix=/tmp/local --disable-shared --enable-static
         make -j$(nproc)
         make install
-        cd ..
-      
+        # Create a symlink so that libpng16.a is available as libpng.a
+        cd /tmp/local/lib
+        if [ ! -f libpng.a ]; then
+          ln -s libpng16.a libpng.a
+        fi
+
     - name: Configure MozJPEG (Static with PNG enabled)
       run: |
         mkdir -p build
         cd build
-        
-        # Set environment variables so CMake can find zlib and libpng
+        # Set up environment variables so CMake can find our libraries via pkg-config
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
-        
-        # Configure for a static build with PNG support enabled
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
-          -DPNG_INCLUDE_DIR=/tmp/local/include \
-          -DPNG_LIBRARY=/tmp/local/lib/libpng16.a \
-          -DZLIB_INCLUDE_DIR=/tmp/local/include \
-          -DZLIB_LIBRARY=/tmp/local/lib/libz.a \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           -DCMAKE_C_FLAGS="-fPIC" \
           ..
-      
+
     - name: Build MozJPEG
       run: |
         cd build
         make -j$(nproc) VERBOSE=1
-        
+
         # List built files for verification
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
-      
+
     - name: Prepare static binaries
       run: |
         cd build
@@ -88,21 +85,19 @@ jobs:
           exit 1
         fi
         echo "Static binaries are available."
-      
+
     - name: Create package
       run: |
         mkdir -p mozjpeg-static/bin
-        
-        # Copy the static binaries from the build output
         cp build/cjpeg-static mozjpeg-static/bin/cjpeg
         cp build/djpeg-static mozjpeg-static/bin/djpeg
-        
+
         # Verify the binaries
         file mozjpeg-static/bin/cjpeg
         file mozjpeg-static/bin/djpeg
-        
+
         tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
-      
+
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
