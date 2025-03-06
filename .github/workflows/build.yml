@@ -1,11 +1,11 @@
-name: Build MozJPEG for Linux x64 (Static)
+name: Build MozJPEG Static Binaries for RHEL
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,46 +20,82 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config libpng-dev zlib1g-dev
       
-    - name: Configure and build
+    - name: Build static zlib and libpng
       run: |
+        # Build static zlib
+        curl -L https://zlib.net/zlib-1.3.tar.gz -o zlib.tar.gz
+        tar xzf zlib.tar.gz
+        cd zlib-*
+        ./configure --prefix=/tmp/local --static
+        make -j$(nproc)
+        make install
+        cd ..
+        
+        # Build static libpng
+        curl -L https://download.sourceforge.net/libpng/libpng-1.6.40.tar.gz -o libpng.tar.gz
+        tar xzf libpng.tar.gz
+        cd libpng-*
+        CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure --prefix=/tmp/local --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+        cd ..
+      
+    - name: Configure and build MozJPEG statically
+      run: |
+        # Set environment variables to use our static libraries
+        export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
+        export CPPFLAGS="-I/tmp/local/include"
+        export LDFLAGS="-L/tmp/local/lib -static"
+        export CFLAGS="-fPIC -O3"
+        export CXXFLAGS="-fPIC -O3"
+        
+        # Configure with static options
         mkdir -p build
         cd build
         cmake -G"Unix Makefiles" \
-          -DCMAKE_C_FLAGS="-fPIC -O3" \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
           -DENABLE_STATIC=ON \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
+          -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
+          -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
+        
+        # Build
         make -j$(nproc)
+      
+    - name: Verify static linking
+      run: |
+        cd build
+        echo "Checking if cjpeg is statically linked:"
+        file cjpeg
+        ldd cjpeg || echo "Good! Binary is statically linked."
+        
+        echo "Checking if djpeg is statically linked:"
+        file djpeg
+        ldd djpeg || echo "Good! Binary is statically linked."
       
     - name: Create package
       run: |
         cd build
         make install DESTDIR=../mozjpeg-install
         
-        # Copy necessary libraries to lib directory
-        mkdir -p ../mozjpeg-install/opt/mozjpeg/lib
-        cp /usr/lib/x86_64-linux-gnu/libpng.a ../mozjpeg-install/opt/mozjpeg/lib/
-        cp /usr/lib/x86_64-linux-gnu/libz.a ../mozjpeg-install/opt/mozjpeg/lib/
+        # Create a simpler directory structure for the final package
+        mkdir -p ../mozjpeg-static/bin
+        cp ../mozjpeg-install/opt/mozjpeg/bin/* ../mozjpeg-static/bin/
         
-        # Create a standalone package with static binaries
-        cd ../mozjpeg-install/opt/mozjpeg/bin
-        for binary in cjpeg djpeg jpegtran rdjpgcom wrjpgcom tjbench; do
-          if [ -f "$binary" ]; then
-            # Create a statically linked version
-            gcc -static -o "${binary}_static" "$binary" ../../lib/libjpeg.a ../../lib/libturbojpeg.a ../../lib/libpng.a ../../lib/libz.a
-            mv "${binary}_static" "$binary"
-          fi
-        done
+        # Copy documentation
+        mkdir -p ../mozjpeg-static/doc
+        cp ../mozjpeg-install/opt/mozjpeg/doc/* ../mozjpeg-static/doc/ || true
         
-        cd ../../../..
-        tar -czvf mozjpeg-linux-x64-static.tar.gz mozjpeg-install/
+        # Create the final tarball
+        cd ..
+        tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
       
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: mozjpeg-linux-x64-static
-        path: mozjpeg-linux-x64-static.tar.gz
+        name: mozjpeg-static-rhel
+        path: mozjpeg-static-rhel.tar.gz
