@@ -59,8 +59,9 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
+          -DHAVE_LIBPNG=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_C_FLAGS="-fPIC" \
+          -DCMAKE_C_FLAGS="-fPIC -DPNG_SUPPORTED=1 -DHAVE_LIBPNG=1" \
           ..
 
     - name: Build MozJPEG
