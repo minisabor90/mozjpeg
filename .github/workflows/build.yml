@@ -34,14 +34,16 @@ jobs:
 
     - name: Download and build static libpng
       run: |
-        wget https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.40.zip -O libpng.zip
+        wget https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip -O libpng.zip
         unzip libpng.zip
-        cd libpng-1.6.40
+        cd libpng-1.6.47
         autoreconf -fiv
-        CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure --prefix=/tmp/local --disable-shared --enable-static
+        # Pass the correct libpng_LIBS variable so that the configure script uses
+        # /tmp/local/lib/libpng16.a and links against zlib.
+        CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure libpng_LIBS='/tmp/local/lib/libpng16.a -lz' --prefix=/tmp/local --disable-shared --enable-static
         make -j$(nproc)
         make install
-        # Create a symlink so that libpng16.a is available as libpng.a
+        # Create a symlink so that libpng16.a is available as libpng.a (if needed)
         cd /tmp/local/lib
         if [ ! -f libpng.a ]; then
           ln -s libpng16.a libpng.a
@@ -51,7 +53,7 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        # Set up environment variables so CMake can find our libraries via pkg-config
+        # Set environment variables so CMake can locate our static libraries via pkg-config.
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
         cmake -G"Unix Makefiles" \
@@ -59,7 +61,6 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF \
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
-          -DHAVE_LIBPNG=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           -DCMAKE_C_FLAGS="-fPIC -DPNG_SUPPORTED=1 -DHAVE_LIBPNG=1" \
           ..
