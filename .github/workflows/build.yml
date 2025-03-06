@@ -65,21 +65,10 @@ jobs:
           -DCMAKE_C_FLAGS="-fPIC" \
           ..
 
-    - name: Patch static target linker flags
+    - name: Build MozJPEG
       run: |
         cd mozjpeg-4.1.1/build
-        cat << 'EOF' > patch.cmake
-        # Patch only the static executable targets to force full static linking
-        set_target_properties(cjpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
-        set_target_properties(djpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
-EOF
-        cmake -P patch.cmake
-
-    - name: Build MozJPEG static targets only
-      run: |
-        cd mozjpeg-4.1.1/build
-        # Build only the static executables to avoid shared targets that may cause rpath/GLIBC issues.
-        make -j$(nproc) cjpeg-static djpeg-static VERBOSE=1
+        make -j$(nproc) VERBOSE=1
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
