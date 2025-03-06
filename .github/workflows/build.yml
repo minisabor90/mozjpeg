@@ -1,4 +1,4 @@
-name: Build libjpeg-turbo for Linux x64
+name: Build mozjpeg for Linux x64
 
 on:
   push:
@@ -12,33 +12,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake nasm build-essential
+          sudo apt-get install -y build-essential autoconf automake libtool nasm pkg-config
 
-      - name: Create build directory
-        run: mkdir -p build
+      - name: Generate configure script
+        run: sh autogen.sh
 
-      - name: Configure build with CMake
+      - name: Configure build
+        run: ./configure --prefix=$GITHUB_WORKSPACE/install
+
+      - name: Build and install mozjpeg
         run: |
-          cd build
-          cmake -G "Unix Makefiles" ..
-
-      - name: Build libjpeg-turbo
-        run: |
-          cd build
           make -j$(nproc)
+          make install
 
-      - name: Run tests (optional)
-        run: |
-          cd build
-          make test
+      - name: Verify build
+        run: install/bin/cjpeg -version
 
-      - name: Upload build artifact
+      - name: Upload compiled binaries
         uses: actions/upload-artifact@v3
         with:
-          name: libjpeg-turbo-build
-          path: build
+          name: mozjpeg-binaries
+          path: install/bin
