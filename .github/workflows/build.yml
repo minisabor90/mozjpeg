@@ -1,79 +1,44 @@
-name: Build mozjpeg for RHEL 8-9
+name: Build MozJPEG for Linux x64
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     container:
-      image: registry.access.redhat.com/ubi8/ubi:8.9
-      options: --user root
-
+      image: redhat/ubi8  # Using RHEL 8 base image
+      
     steps:
-    # Checkout the repository
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    # Configure repositories and install dependencies
+    - uses: actions/checkout@v3
+      
     - name: Install build dependencies
       run: |
-        # Update package manager
-        dnf update -y
-        
-        # Install EPEL repository for additional packages
         dnf install -y epel-release
+        dnf install -y gcc gcc-c++ make cmake autoconf automake libtool nasm git
         
-        # Enable CodeReady Builder repository
-        dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms
-        
-        # Install dependencies
-        dnf install -y \
-          gcc \
-          make \
-          cmake \
-          nasm \
-          libpng-devel \
-          zlib-devel \
-          diffutils
-
-    # Create build directory
-    - name: Create build directory
-      run: mkdir build
-
-    # Configure with CMake
-    - name: Configure CMake
-      working-directory: ./build
-      run: cmake .. -DCMAKE_BUILD_TYPE=Release
-
-    # Build the project
-    - name: Build mozjpeg
-      working-directory: ./build
-      run: make -j$(nproc)
-
-    # Optional: Run tests
-    - name: Run tests
-      working-directory: ./build
-      run: ctest --output-on-failure
-
-    # Create artifacts directory
-    - name: Prepare artifacts
+    - name: Configure and build MozJPEG
       run: |
-        mkdir -p artifacts
-        cp build/cjpeg artifacts/
-        cp build/djpeg artifacts/
-        cp build/jpegtran artifacts/
-        cp build/rdjpgcom artifacts/
-        cp build/wrjpgcom artifacts/
-
-    # Upload artifacts
+        mkdir build
+        cd build
+        cmake -G"Unix Makefiles" \
+              -DCMAKE_INSTALL_PREFIX=/usr/local \
+              -DCMAKE_BUILD_TYPE=Release \
+              ..
+        make -j$(nproc)
+        
+    - name: Create package
+      run: |
+        cd build
+        make install DESTDIR=$PWD/install
+        tar -czvf mozjpeg-linux-x64.tar.gz -C install .
+        
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
-        name: mozjpeg-rhel8-x64
-        path: artifacts/
+        name: mozjpeg-linux-x64
+        path: build/mozjpeg-linux-x64.tar.gz
