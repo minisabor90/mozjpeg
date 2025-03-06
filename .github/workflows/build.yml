@@ -1,44 +1,34 @@
-name: Build MozJPEG for Linux x64
+name: Build mozjpeg for Linux x64
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # Allows manual triggering
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: redhat/ubi8  # Using RHEL 8 base image
-      
+
     steps:
-    - uses: actions/checkout@v3
-      
-    - name: Install build dependencies
-      run: |
-        dnf install -y epel-release
-        dnf install -y gcc gcc-c++ make cmake autoconf automake libtool nasm git
-        
-    - name: Configure and build MozJPEG
-      run: |
-        mkdir build
-        cd build
-        cmake -G"Unix Makefiles" \
-              -DCMAKE_INSTALL_PREFIX=/usr/local \
-              -DCMAKE_BUILD_TYPE=Release \
-              ..
-        make -j$(nproc)
-        
-    - name: Create package
-      run: |
-        cd build
-        make install DESTDIR=$PWD/install
-        tar -czvf mozjpeg-linux-x64.tar.gz -C install .
-        
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: mozjpeg-linux-x64
-        path: build/mozjpeg-linux-x64.tar.gz
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool nasm pkg-config
+
+      - name: Prepare build system
+        run: |
+          autoreconf -fiv
+
+      - name: Configure mozjpeg
+        run: |
+          ./configure
+
+      - name: Build mozjpeg
+        run: |
+          make -j$(nproc)
