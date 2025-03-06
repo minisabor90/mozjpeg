@@ -20,9 +20,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget unzip
       
-    - name: Download and build static zlib (latest version)
+    - name: Download and build static zlib
       run: |
-        # Download latest zlib 1.3.1
         wget https://github.com/madler/zlib/archive/refs/tags/v1.3.1.zip -O zlib.zip
         unzip zlib.zip
         cd zlib-1.3.1
@@ -30,10 +29,11 @@ jobs:
         make -j$(nproc)
         make install
         cd ..
-      
-    - name: Download and build static libpng (latest version)
+        # Verify zlib installation
+        ls -la /tmp/local/lib/libz.a
+        
+    - name: Download and build static libpng
       run: |
-        # Download latest libpng 1.6.47
         wget https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip -O libpng.zip
         unzip libpng.zip
         cd libpng-1.6.47
@@ -43,9 +43,19 @@ jobs:
         make install
         cd ..
         
-        # Verify that libpng.a exists and is a valid archive
+        # Verify libpng installation
         ls -la /tmp/local/lib/libpng*.a
-        file /tmp/local/lib/libpng*.a
+        
+    - name: Debug dependencies
+      run: |
+        echo "=== Installed libraries ==="
+        find /tmp/local -name "*.a" | sort
+        find /tmp/local -name "*.h" | grep -E 'png|zlib' | sort
+        
+        echo "=== PKG Config ==="
+        ls -la /tmp/local/lib/pkgconfig/
+        cat /tmp/local/lib/pkgconfig/libpng*.pc || echo "No libpng.pc found"
+        cat /tmp/local/lib/pkgconfig/zlib.pc || echo "No zlib.pc found"
       
     - name: Configure MozJPEG
       run: |
@@ -57,7 +67,6 @@ jobs:
         export CMAKE_PREFIX_PATH=/tmp/local
         
         # Configure with static options and explicitly specify PNG paths
-        # Note: ENABLE_SHARED=OFF to avoid the PIC issue
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
@@ -71,50 +80,120 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           ..
+        
+        # If CMake fails, show the error log
+        if [ $? -ne 0 ]; then
+          echo "CMake configuration failed. Showing CMakeError.log:"
+          cat CMakeFiles/CMakeError.log || echo "No CMakeError.log found"
+          exit 1
+        fi
       
     - name: Build MozJPEG
       run: |
         cd build
-        make -j$(nproc)
+        make -j$(nproc) VERBOSE=1
+        
+        # Check what was built
+        echo "=== Built files ==="
+        find . -type f -executable | sort
+        find . -name "*.a" | sort
       
     - name: Build static binaries
       run: |
         cd build
         
-        echo "Available static libraries:"
-        find . -name "*.a" | sort
-        
-        # List object files in cjpeg and djpeg directories
-        echo "Object files in cjpeg:"
+        # Debug object files
+        echo "=== Object files in cjpeg ==="
         find cjpeg -name "*.o" | sort
         
-        echo "Object files in djpeg:"
+        echo "=== Object files in djpeg ==="
         find djpeg -name "*.o" | sort
         
-        # Compile cjpeg statically
-        echo "Building static cjpeg..."
-        gcc -static -o cjpeg.static cjpeg/*.o ./*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
+        echo "=== Static libraries ==="
+        find . -name "*.a" | sort
+        find /tmp/local/lib -name "*.a" | sort
         
-        # Compile djpeg statically
+        # Create static binaries
+        echo "Building static cjpeg..."
+        gcc -static -o cjpeg.static cjpeg/*.o ./*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm || \
+          echo "Failed to build cjpeg.static with first method, trying alternative..."
+        
+        if [ ! -f "cjpeg.static" ]; then
+          # Try alternative linking approach
+          cd cjpeg
+          gcc -static -o cjpeg.static *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm -lpthread
+          cd ..
+        fi
+        
         echo "Building static djpeg..."
-        gcc -static -o djpeg.static djpeg/*.o ./*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
+        gcc -static -o djpeg.static djpeg/*.o ./*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm || \
+          echo "Failed to build djpeg.static with first method, trying alternative..."
+        
+        if [ ! -f "djpeg.static" ]; then
+          # Try alternative linking approach
+          cd djpeg
+          gcc -static -o djpeg.static *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm -lpthread
+          cd ..
+        fi
       
     - name: Verify static linking
       run: |
         cd build
-        echo "Checking if cjpeg is statically linked:"
-        file cjpeg.static
-        ldd cjpeg.static || echo "Good! Binary is statically linked."
         
-        echo "Checking if djpeg is statically linked:"
-        file djpeg.static
-        ldd djpeg.static || echo "Good! Binary is statically linked."
+        # Check if our binaries exist
+        if [ -f "cjpeg.static" ]; then
+          echo "Checking if cjpeg.static is statically linked:"
+          file cjpeg.static
+          ldd cjpeg.static || echo "Good! Binary is statically linked."
+        elif [ -f "cjpeg/cjpeg.static" ]; then
+          echo "Checking if cjpeg/cjpeg.static is statically linked:"
+          file cjpeg/cjpeg.static
+          ldd cjpeg/cjpeg.static || echo "Good! Binary is statically linked."
+        else
+          echo "ERROR: cjpeg.static was not built successfully!"
+          exit 1
+        fi
+        
+        if [ -f "djpeg.static" ]; then
+          echo "Checking if djpeg.static is statically linked:"
+          file djpeg.static
+          ldd djpeg.static || echo "Good! Binary is statically linked."
+        elif [ -f "djpeg/djpeg.static" ]; then
+          echo "Checking if djpeg/djpeg.static is statically linked:"
+          file djpeg/djpeg.static
+          ldd djpeg/djpeg.static || echo "Good! Binary is statically linked."
+        else
+          echo "ERROR: djpeg.static was not built successfully!"
+          exit 1
+        fi
       
     - name: Create package
       run: |
         mkdir -p mozjpeg-static/bin
-        cp build/cjpeg.static mozjpeg-static/bin/cjpeg
-        cp build/djpeg.static mozjpeg-static/bin/djpeg
+        
+        # Find and copy the static binaries
+        if [ -f "build/cjpeg.static" ]; then
+          cp build/cjpeg.static mozjpeg-static/bin/cjpeg
+        elif [ -f "build/cjpeg/cjpeg.static" ]; then
+          cp build/cjpeg/cjpeg.static mozjpeg-static/bin/cjpeg
+        else
+          echo "ERROR: Could not find cjpeg.static!"
+          exit 1
+        fi
+        
+        if [ -f "build/djpeg.static" ]; then
+          cp build/djpeg.static mozjpeg-static/bin/djpeg
+        elif [ -f "build/djpeg/djpeg.static" ]; then
+          cp build/djpeg/djpeg.static mozjpeg-static/bin/djpeg
+        else
+          echo "ERROR: Could not find djpeg.static!"
+          exit 1
+        fi
+        
+        # Check the binaries
+        file mozjpeg-static/bin/cjpeg
+        file mozjpeg-static/bin/djpeg
+        
         tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
       
     - name: Upload build artifact
