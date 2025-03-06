@@ -48,11 +48,11 @@ jobs:
         mkdir -p build
         cd build
         
-        # Set environment variables to help CMake find our libraries
+        # Set environment variables so CMake can find zlib and libpng
         export PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig
         export CMAKE_PREFIX_PATH=/tmp/local
         
-        # Configure for static build: disable shared libraries
+        # Configure for static build: force static libraries
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
@@ -71,67 +71,34 @@ jobs:
         cd build
         make -j$(nproc) VERBOSE=1
         
-        # Show what was built
+        # List built files for verification
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
       
-    - name: Build static binaries
+    - name: Prepare static binaries
       run: |
         cd build
-        
-        # Ensure libjpeg.a is built; if not, try building it explicitly
-        if [ ! -f "libjpeg.a" ]; then
-          echo "libjpeg.a not found in build directory, attempting to build static target..."
-          make libjpeg.a
-        fi
-        
-        if [ ! -f "libjpeg.a" ]; then
-          echo "ERROR: libjpeg.a not found!"
+        # The CMake build now produces static executables (cjpeg-static, djpeg-static, etc.)
+        if [ ! -f "cjpeg-static" ]; then
+          echo "ERROR: cjpeg-static not found!"
           exit 1
         fi
-        
-        # Create static binaries using the static libraries
-        echo "Building static cjpeg..."
-        gcc -static -o cjpeg.static ../cjpeg/cjpeg.c ../cjpeg/rdppm.c ../cjpeg/rdgif.c ../cjpeg/rdtarga.c ../cjpeg/rdrle.c ../cjpeg/rdbmp.c ../cjpeg/rdswitch.c ../cjpeg/cdjpeg.c \
-          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../cjpeg -lm
-        
-        echo "Building static djpeg..."
-        gcc -static -o djpeg.static ../djpeg/djpeg.c ../djpeg/wrppm.c ../djpeg/wrgif.c ../djpeg/wrtarga.c ../djpeg/wrrle.c ../djpeg/wrbmp.c ../djpeg/rdcolmap.c ../djpeg/cdjpeg.c \
-          libjpeg.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -I.. -I../djpeg -lm
-      
-    - name: Verify static linking
-      run: |
-        cd build
-        
-        # Check if our binaries exist
-        if [ -f "cjpeg.static" ]; then
-          echo "Checking if cjpeg.static is statically linked:"
-          file cjpeg.static
-          ldd cjpeg.static || echo "Good! Binary is statically linked."
-        else
-          echo "ERROR: cjpeg.static was not built successfully!"
+        if [ ! -f "djpeg-static" ]; then
+          echo "ERROR: djpeg-static not found!"
           exit 1
         fi
-        
-        if [ -f "djpeg.static" ]; then
-          echo "Checking if djpeg.static is statically linked:"
-          file djpeg.static
-          ldd djpeg.static || echo "Good! Binary is statically linked."
-        else
-          echo "ERROR: djpeg.static was not built successfully!"
-          exit 1
-        fi
+        echo "Static binaries are available."
       
     - name: Create package
       run: |
         mkdir -p mozjpeg-static/bin
         
-        # Copy the static binaries
-        cp build/cjpeg.static mozjpeg-static/bin/cjpeg
-        cp build/djpeg.static mozjpeg-static/bin/djpeg
+        # Copy the static binaries from the build output
+        cp build/cjpeg-static mozjpeg-static/bin/cjpeg
+        cp build/djpeg-static mozjpeg-static/bin/djpeg
         
-        # Check the binaries
+        # Verify the binaries
         file mozjpeg-static/bin/cjpeg
         file mozjpeg-static/bin/djpeg
         
