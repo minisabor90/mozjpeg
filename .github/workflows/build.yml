@@ -10,12 +10,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      # Using CentOS 8 container which has compatible glibc with RHEL 8
+      image: quay.io/centos/centos:8
 
     steps:
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget unzip
+        # Enable PowerTools repository for some dependencies
+        dnf install -y dnf-plugins-core
+        dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled PowerTools
+        
+        # Install build dependencies
+        dnf install -y epel-release
+        dnf install -y gcc gcc-c++ make cmake nasm autoconf automake libtool pkgconfig wget unzip tar gzip
 
     - name: Download and build static zlib
       run: |
@@ -62,27 +70,25 @@ jobs:
           -DWITH_JPEG8=ON \
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
-          -DCMAKE_C_FLAGS="-fPIC" \
+          -DCMAKE_C_FLAGS="-fPIC -static" \
+          -DCMAKE_EXE_LINKER_FLAGS="-static" \
           ..
 
-    - name: Patch static target linker flags
+    - name: Build MozJPEG
       run: |
         cd mozjpeg-4.1.1/build
-        cat << 'EOF' > patch.cmake
-        # Patch only the static executable targets to force full static linking
-        set_target_properties(cjpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
-        set_target_properties(djpeg-static PROPERTIES LINK_FLAGS "-static -static-libgcc -static-libstdc++")
-EOF
-        cmake -P patch.cmake
-
-    - name: Build MozJPEG static targets only
-      run: |
-        cd mozjpeg-4.1.1/build
-        # Build only the static executables to avoid shared targets that may cause rpath/GLIBC issues.
-        make -j$(nproc) cjpeg-static djpeg-static VERBOSE=1
+        make -j$(nproc) VERBOSE=1
         echo "=== Built files ==="
         find . -name "*.a" | sort
         find . -type f -executable | sort
+
+    - name: Check binary compatibility
+      run: |
+        cd mozjpeg-4.1.1/build
+        echo "Checking glibc dependencies for cjpeg-static:"
+        ldd cjpeg-static || echo "Static binary with no dynamic dependencies"
+        echo "Checking glibc version requirements:"
+        objdump -T cjpeg-static | grep GLIBC_ || echo "No GLIBC dependencies found"
 
     - name: Prepare static binaries
       run: |
