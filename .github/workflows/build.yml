@@ -18,7 +18,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config
+        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config libpng-dev zlib1g-dev
       
     - name: Configure and build
       run: |
