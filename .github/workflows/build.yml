@@ -18,16 +18,40 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config
-        sudo apt-get install -y zlib1g-dev libpng-dev
+        sudo apt-get install -y build-essential cmake nasm autoconf automake libtool pkg-config wget
       
-    - name: Configure and build MozJPEG statically
+    - name: Download and build static zlib
       run: |
-        # Configure with static options - IMPORTANT: ENABLE_SHARED must be OFF
+        # Download using GitHub mirror to avoid potential download issues
+        wget https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+        tar xzf zlib-1.3.1.tar.gz
+        cd zlib-1.3.1
+        ./configure --prefix=/tmp/local --static
+        make -j$(nproc)
+        make install
+        cd ..
+      
+    - name: Download and build static libpng
+      run: |
+        # Download from GitHub mirror to avoid SourceForge issues
+        wget https://github.com/glennrp/libpng/archive/refs/tags/v1.6.47.tar.gz -O libpng.tar.gz
+        tar xzf libpng.tar.gz
+        cd libpng-1.6.47
+        autoreconf -fiv
+        CPPFLAGS="-I/tmp/local/include" LDFLAGS="-L/tmp/local/lib" ./configure --prefix=/tmp/local --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+        cd ..
+      
+    - name: Configure MozJPEG
+      run: |
         mkdir -p build
         cd build
         
-        # Note: We're NOT setting LDFLAGS="-static" globally as it causes issues with shared libs
+        # Configure with static options and point to our local static libraries
+        PKG_CONFIG_PATH=/tmp/local/lib/pkgconfig \
+        CPPFLAGS="-I/tmp/local/include" \
+        LDFLAGS="-L/tmp/local/lib" \
         cmake -G"Unix Makefiles" \
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_SHARED=OFF \
@@ -36,18 +60,24 @@ jobs:
           -DPNG_SUPPORTED=ON \
           -DCMAKE_INSTALL_PREFIX=/opt/mozjpeg \
           ..
-        
-        # Build
-        make -j$(nproc)
       
-    - name: Build static binaries with explicit static linking
+    - name: Build MozJPEG
       run: |
         cd build
-        # Now build the executables with static linking
+        make -j$(nproc)
+      
+    - name: Build static binaries
+      run: |
+        cd build
+        
+        # Compile cjpeg statically
         cd cjpeg
-        gcc -static -o cjpeg *.o ../*.a /usr/lib/x86_64-linux-gnu/libpng.a /usr/lib/x86_64-linux-gnu/libz.a -lm
+        gcc -static -o cjpeg *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
+        
+        # Compile djpeg statically
         cd ../djpeg
-        gcc -static -o djpeg *.o ../*.a /usr/lib/x86_64-linux-gnu/libpng.a /usr/lib/x86_64-linux-gnu/libz.a -lm
+        gcc -static -o djpeg *.o ../*.a /tmp/local/lib/libpng.a /tmp/local/lib/libz.a -lm
+        
         # Copy the static binaries back to the main build directory
         cp cjpeg/cjpeg ../cjpeg
         cp djpeg/djpeg ../djpeg
@@ -65,13 +95,8 @@ jobs:
       
     - name: Create package
       run: |
-        # Create directory structure for the package
         mkdir -p mozjpeg-static/bin
-        
-        # Copy the static binaries
         cp build/cjpeg build/djpeg mozjpeg-static/bin/
-        
-        # Create the tarball
         tar -czvf mozjpeg-static-rhel.tar.gz mozjpeg-static/
       
     - name: Upload build artifact
